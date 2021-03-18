@@ -9,22 +9,77 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+source("../Code/my_rf_cv.R")
+library(ggplot2)
+library(tidyverse)
+```
+```{r}
+# read in data from relative file path
+my_gapminder <- read_csv(file = "../Data/my_gapminder.csv")
+my_penguins <- read_csv(file = "../Data/my_penguins.csv")
 ```
 
-## Including Plots
+## `my_rf_cv`: Random-forest algorithm statistical prediction
 
-You can also embed plots, for example:
+The function `my_rf_cv()` runs a random-forest statistical prediction algorithm on `my_penguins` data and performs k-fold cross validation on those prediction models. The following is a demonstration of the function.
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+rf_results <- NULL
+
+# generate 30 MSE values for 2-, 5-, and 10-fold cross validation
+for (i in c(2, 5, 10)) {
+  for (j in 1:30) {
+    rf_results <- append(rf_results, my_rf_cv(i))
+  }
+}
+
+# format results into data frame for saving
+rf_results_save <- matrix(rf_results,
+                          nrow = 30,
+                          ncol = 3,
+                          dimnames = list(NULL,
+                                          c("k = 2", "k = 5", "k = 10"))) %>% 
+  as.data.frame()
+
+# save results
+write.csv(rf_results_save, file = "../Output/Results/rf_results_save.csv")
+
+# format results into data frame for generating plot
+rf_results_df <- data.frame("k" = as.factor(rep(c(2, 5, 10), each = 30)),
+                            "mse" = rf_results)
+
+# generate plot with boxplots of my_rf_cv result distributions by k-value
+rf_plot <- ggplot(rf_results_df, aes(x = mse, y = k)) +
+  geom_boxplot(fill = "lightblue") +
+  theme_bw(base_size = 14) +
+  labs(x = "MSE value",
+       y = "Fold count (k)",
+       title = "Random-forest CV Error Distributions") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# save plot to local directory
+ggsave("mse_boxplot.png", path = "../Output/Figures/")
+
+# generate table with mean and std. dev of MSE values for each fold
+rf_table <- rf_results_df %>% 
+  group_by(k) %>% 
+  summarize(mean(mse), sd(mse)) %>% 
+  as.data.frame()
+
+colnames(rf_table) <- c("k", "mean", "sd")
+rownames(rf_table) <- c("k = 2", "k = 5", "k = 10")
+
+rf_table <- rf_table %>% select(mean, sd)
+
+# save summary statistics table
+saveRDS(rf_table, file = "../Output/Results/mse_summary_stats.rds")
+
+
+
+# display plot and summary table
+rf_plot
+knitr::kable(rf_table)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+From the boxplots, it is evident that higher values of k (greater numbers of folds in the cross-validation) results in lower mean squared-error values for the random-forest algorithm cross validation. Additionally, the spread of the distributions of MSE values decreases as k increases. The values in the table demonstrate this because the highest mean and standard deviation of MSE values is for k = 2 folds, with k = 5 folds having the next-lowest mean and standard deviation, and k = 10 folds has the lowest mean and standard deviation of MSE values. This could be because as the number of folds in the cross-validation increases, the less training-set bias there is in the estimate of the random-forest model error. The individual folds decrease in size, and the relative sizes of the in-fold and out-fold groups of data changes drastically. More of the data is tested against less of the data more times as the number of folds increases, decreasing the noise and bias in the error estimates.
